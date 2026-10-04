@@ -25,9 +25,11 @@ Given a query that matches at least one listing, the agent completes all three
 tool calls and returns a fit card — in at least 4 of 5 tries.
 
 **Why this target:**
-<!-- Why 4 of 5 and not 5 of 5? Something about your search, probably —
-     "my search is a plain keyword match and some phrasings will miss" is a
-     real answer. -->
+`search_listings` is a plain keyword match after a regex pulls out the price
+and size, so some phrasings parse badly (in testing, `"size 8"` wasn't read as
+a size at all) and two of the three steps depend on a rate-limited model call
+that can fail. One miss in five allows for that; more than one would mean the
+parsing or the model call is a real problem, not bad luck.
 
 ---
 
@@ -37,66 +39,65 @@ Given a query that matches no listings, the agent stops before calling
 `suggest_outfit` and returns a message naming what to change — 5 of 5 tries.
 
 **Why this target:**
-<!-- Why is 5 of 5 reasonable here when criterion 1 isn't? What's different
-     about this path? -->
+This path never calls the model. `run_agent` checks `if not
+session["search_results"]` and returns before `suggest_outfit`, and
+`search_listings` always returns `[]` (never `None`) on no match. It is fully
+deterministic, so anything less than 5 of 5 means the branch is broken.
 
 ---
 
-## 3. Something about state
+## 3. The item search found is the item the later tools used
 
-<!-- YOU WRITE THIS ONE.
-
-     How would you know that the item your search found is the same item the
-     next tool received? Name something countable or observable.
-
-     This is the criterion people find hardest, because state failure doesn't
-     look like state failure — it looks like a tool problem. Something that
-     compares session["selected_item"] against what actually reached
-     suggest_outfit is the shape you're after. -->
-
-
+For each of the 5 matching queries in `app.py`'s `EXAMPLE_QUERIES`, after
+`run_agent` returns, `session["selected_item"]["id"]` is the `id` of an item in
+`session["search_results"]`, and the fit card contains that item's exact price
+(e.g. `$18`) and its platform name (case-insensitive) — 5 of 5 queries.
 
 **Why this target:**
-
-
+The item reaches `suggest_outfit` and `create_fit_card` only through
+`session["selected_item"]`, never as a value the user retypes, so if the price
+and platform of that exact listing show up in the caption, the right item made
+it all the way through. Session passing is deterministic code, so I set 5 of 5.
+The one risk is the model rounding `$18.00` to `"18 bucks"`, and my prompt
+explicitly says to mention the price, so that would count as a miss I want to
+see.
 
 ---
 
-## 4. Something about the fit card
+## 4. The fit card is a postable caption, and it varies
 
-<!-- YOU WRITE THIS ONE.
-
-     The fit card calls a model, so the same input can produce different words
-     each time. That's not a bug — it's the nature of the tool. So what would
-     make it acceptable?
-
-     Think about what you'd actually be unhappy to see. A caption that never
-     mentions the price? Two different items producing the same opening
-     sentence? A card longer than a caption anyone would post? Any of those can
-     be turned into a number. -->
-
-
+Running `'vintage graphic tee under $30'` 5 times with caching off
+(`AI201_CACHE=0`): every fit card is between 2 and 4 sentences, has at most 2
+hashtags, and no two of the 5 cards share the same first sentence — 4 of 5
+cards meet the length and hashtag limits, and 5 of 5 first sentences are
+distinct.
 
 **Why this target:**
-
-
+`create_fit_card` runs at `TEMPERATURE = 0.9` and the prompt asks for 2–4
+sentences and at most two hashtags, but the model doesn't always follow
+formatting rules exactly, so I allow one card in five to break the length or
+hashtag rule. Distinct openings should be 5 of 5 at that temperature; if two
+match, the prompt is pushing the model into a template opener like "Scored
+this…", which I already saw twice in early runs.
 
 ---
 
-## 5. Your choice
+## 5. Search respects the price ceiling and the size
 
-<!-- YOU WRITE THIS ONE TOO.
-
-     Pick something you actually care about getting right. Speed, the empty
-     wardrobe path, what happens when the model can't be reached, whether the
-     search respects a price ceiling — anything, as long as it names a number
-     or an observable outcome. -->
-
-
+For these 5 queries — `'vintage graphic tee under $30'`, `'denim jacket under
+$50'`, `'silk slip dress in midi length under $40'`, `'90s track jacket in size
+M'`, `'sneakers size US 9'` — every listing in `session["search_results"]` has
+`price` ≤ the stated limit, and, when a size is given, a `size` whose `/`- or
+space-separated parts include it (so `M` accepts `S/M`, but `S` never accepts
+`US 9`) — 5 of 5 queries, with zero violating listings.
 
 **Why this target:**
-
-
+These filters run in plain Python in `search_listings` before any scoring,
+with no model involved, so the result should never vary. The data has messy
+sizes (`S/M`, `L/XL`, `US 8.5`, `W30 L30`, `One Size / Oversized`) where a
+substring test would let `L` match `XL`, so this criterion exists to catch
+exactly that. Even one wrong-size listing means the token-matching rule is
+wrong, so the target is all of them.
 
 ---
 
