@@ -67,10 +67,8 @@ see.
 ## 4. The fit card is a postable caption, and it varies
 
 Running `'vintage graphic tee under $30'` 5 times with caching off
-(`AI201_CACHE=0`): every fit card is between 2 and 4 sentences, has at most 2
-hashtags, and no two of the 5 cards share the same first sentence — 4 of 5
-cards meet the length and hashtag limits, and 5 of 5 first sentences are
-distinct.
+(`AI201_CACHE=0`): at least 4 of the 5 fit cards are 2–4 sentences long with at
+most 2 hashtags, and all 5 cards have a different first sentence.
 
 **Why this target:**
 `create_fit_card` runs at `TEMPERATURE = 0.9` and the prompt asks for 2–4
