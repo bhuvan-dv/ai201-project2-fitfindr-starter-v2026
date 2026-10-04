@@ -104,7 +104,7 @@ def cmd_examples(args):
     )
 
 
-def _ask_one(query, wardrobe, use_trace):
+def _ask_one(query, wardrobe, use_trace, use_memory=False):
     from agent import run_agent
     import trace as trace_module
 
@@ -118,12 +118,26 @@ def _ask_one(query, wardrobe, use_trace):
         print(f"  {session['error']}")
     else:
         item = session["selected_item"] or {}
+        if session.get("swapped_from"):
+            old = session["swapped_from"]
+            print(f"  Skipped:  {old['title']} — ${old['price']} is above typical for "
+                  f"{old['category']}, so I picked a cheaper match instead")
         print(f"  Found:    {item.get('title')} — ${item.get('price')} on {item.get('platform')}")
+        check = session.get("price_check")
+        if check:
+            typical = f"${check['typical_price']:.2f}" if check["typical_price"] is not None else "n/a"
+            print(f"  Price:    {check['verdict']} (typical {item.get('category')} price {typical}, "
+                  f"{check['n_compared']} compared)")
         print()
         print(f"  Outfit:   {session['outfit_suggestion']}")
         print()
         print(f"  Fit card: {session['fit_card']}")
     print()
+
+    if use_memory and not session["error"]:
+        import memory
+        if memory.remember(session["selected_item"]):
+            print(f"  Saved to style memory: {session['selected_item']['title']}\n")
 
     if use_trace:
         text = trace_module.get_trace()
@@ -139,13 +153,26 @@ def cmd_ask(args):
     from utils.data_loader import get_example_wardrobe, get_empty_wardrobe
     import generate
 
-    wardrobe = get_empty_wardrobe() if args.empty_wardrobe else get_example_wardrobe()
+    if args.forget:
+        import memory
+        memory.forget()
+        print("(style memory cleared)")
+        if not args.query:
+            return
+
+    if args.memory:
+        import memory
+        wardrobe = memory.load_wardrobe()
+        names = [w["name"] for w in wardrobe["items"]] or ["nothing yet"]
+        print(f"(style memory: {len(wardrobe['items'])} saved — {', '.join(names)})")
+    else:
+        wardrobe = get_empty_wardrobe() if args.empty_wardrobe else get_example_wardrobe()
     if args.empty_wardrobe:
         print("(running with an empty wardrobe)")
 
     try:
         if args.query:
-            _ask_one(args.query, wardrobe, args.trace)
+            _ask_one(args.query, wardrobe, args.trace, args.memory)
         else:
             print("Ask for something, or press Enter on an empty line to quit.\n")
             while True:
@@ -156,7 +183,7 @@ def cmd_ask(args):
                     break
                 if not query:
                     break
-                _ask_one(query, wardrobe, args.trace)
+                _ask_one(query, wardrobe, args.trace, args.memory)
     finally:
         print(generate.usage())
 
@@ -189,6 +216,9 @@ def build_parser():
         action="store_true",
         help="run as a user with nothing saved — one of unit 4's failure modes",
     )
+    p_ask.add_argument("--memory", action="store_true",
+                       help="use and update the saved wardrobe in memory/wardrobe.json (stretch)")
+    p_ask.add_argument("--forget", action="store_true", help="clear the saved wardrobe")
     p_ask.set_defaults(func=cmd_ask)
 
     return parser

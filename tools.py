@@ -286,3 +286,46 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
     )
     response = generate(prompt).strip()
     return response or f"Thrifted the {new_item['title']} for ${new_item['price']:.2f} on {new_item['platform']}."
+
+
+# ── Tool 4 (stretch): compare_price ───────────────────────────────────────────
+
+def compare_price(item: dict) -> dict:
+    """
+    Compare a listing's price with other listings in the same category.
+
+    Args:
+        item: a listing dict.
+
+    Returns:
+        {"item_price": float, "typical_price": float | None,
+         "n_compared": int, "verdict": str}
+        verdict is "good deal" (≤ 80% of the category median), "above typical"
+        (≥ 125% of it), or "fair" in between.
+
+        When there's nothing to compare against (no other listing in the
+        category), typical_price is None, n_compared is 0 and the verdict is
+        "no comparison". It never raises.
+    """
+    others = [
+        l["price"] for l in load_listings()
+        if l["category"] == item.get("category") and l["id"] != item.get("id")
+    ]
+    result = {"item_price": item["price"], "typical_price": None,
+              "n_compared": len(others), "verdict": "no comparison"}
+    if not others:
+        return result
+
+    others.sort()
+    mid = len(others) // 2
+    median = others[mid] if len(others) % 2 else (others[mid - 1] + others[mid]) / 2
+    result["typical_price"] = median
+
+    ratio = item["price"] / median
+    if ratio <= 0.8:
+        result["verdict"] = "good deal"
+    elif ratio >= 1.25:
+        result["verdict"] = "above typical"
+    else:
+        result["verdict"] = "fair"
+    return result

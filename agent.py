@@ -17,7 +17,7 @@ import re
 
 import config
 import trace
-from tools import search_listings, suggest_outfit, create_fit_card
+from tools import search_listings, suggest_outfit, create_fit_card, compare_price
 from generate import ModelUnavailable
 
 
@@ -45,6 +45,8 @@ def new_session(query: str, wardrobe: dict) -> dict:
         "wardrobe": wardrobe,        # the user's wardrobe
         "outfit_suggestion": None,   # what suggest_outfit returned
         "fit_card": None,            # what create_fit_card returned
+        "price_check": None,         # what compare_price returned (stretch)
+        "swapped_from": None,        # the overpriced pick we replaced, if any (stretch)
         "error": None,               # set when the run ended early
     }
 
@@ -129,6 +131,18 @@ def run_agent(query: str, wardrobe: dict) -> dict:
 
             session["selected_item"] = session["search_results"][0]
 
+        elif session["price_check"] is None:
+            session["price_check"] = compare_price(session["selected_item"])
+
+            # SECOND BRANCH: the pick is overpriced for its category and a
+            # cheaper same-category result exists → switch to that one.
+            if session["price_check"]["verdict"] == "above typical":
+                alternative = _cheaper_alternative(session)
+                if alternative is not None:
+                    session["swapped_from"] = session["selected_item"]
+                    session["selected_item"] = alternative
+                    session["price_check"] = compare_price(alternative)
+
         elif session["outfit_suggestion"] is None:
             session["outfit_suggestion"] = suggest_outfit(
                 session["selected_item"], session["wardrobe"]
@@ -141,6 +155,18 @@ def run_agent(query: str, wardrobe: dict) -> dict:
 
         else:
             return session
+
+
+def _cheaper_alternative(session: dict) -> dict | None:
+    """Best-ranked search result in the same category that is cheaper and not itself overpriced."""
+    current = session["selected_item"]
+    for candidate in session["search_results"]:
+        if (candidate["id"] != current["id"]
+                and candidate["category"] == current["category"]
+                and candidate["price"] < current["price"]
+                and compare_price(candidate)["verdict"] != "above typical"):
+            return candidate
+    return None
 
 
 def parse_query(query: str) -> dict:
@@ -166,8 +192,13 @@ def parse_query(query: str) -> dict:
         r"\bsize\s+(us\s*\d+(?:\.\d+)?|w\d+(?:\s*l\d+)?|xxs|xs|s|m|l|xl|xxl)\b",
         text, re.IGNORECASE,
     )
+    bare = re.search(r"\bsize\s+(\d+(?:\.\d+)?)\b", text, re.IGNORECASE)
     if size_match:
         size = size_match.group(1).upper()
+    elif bare:
+        size_match = bare
+        size = f"US {bare.group(1)}"   # a bare number is a shoe size in this data
+    if size_match:
         text = text[: size_match.start()] + " " + text[size_match.end():]
 
     description = re.sub(r"[,.]", " ", text)
