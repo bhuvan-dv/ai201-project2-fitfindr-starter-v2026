@@ -13,6 +13,8 @@ Build and test your three tools in `tools.py` first. Then come here.
     python agent.py          runs both example paths below
 """
 
+import re
+
 import config
 import trace
 from tools import search_listings, suggest_outfit, create_fit_card
@@ -106,10 +108,89 @@ def run_agent(query: str, wardrobe: dict) -> dict:
         than a stack trace. The import is already at the top of this file.
     """
     session = new_session(query, wardrobe)
+    session["parsed"] = parse_query(query)
 
-    # TODO: delete these two lines and build the loop.
-    session["error"] = "The planning loop isn't built yet — see the TODO in agent.py."
-    return session
+    # Each pass looks at what's already in the session and picks the next step.
+    steps = 0
+    while True:
+        steps += 1
+        trace.check_iterations(steps)
+
+        if not session["search_results"] and session["selected_item"] is None:
+            p = session["parsed"]
+            session["search_results"] = search_listings(
+                p["description"], p["size"], p["max_price"]
+            )
+
+            # THE BRANCH: nothing found → explain what to change and stop.
+            if not session["search_results"]:
+                session["error"] = _no_results_message(p)
+                return session
+
+            session["selected_item"] = session["search_results"][0]
+
+        elif session["outfit_suggestion"] is None:
+            session["outfit_suggestion"] = suggest_outfit(
+                session["selected_item"], session["wardrobe"]
+            )
+
+        elif session["fit_card"] is None:
+            session["fit_card"] = create_fit_card(
+                session["outfit_suggestion"], session["selected_item"]
+            )
+
+        else:
+            return session
+
+
+def parse_query(query: str) -> dict:
+    """
+    Pull a price ceiling and a size out of the query with regex; whatever is
+    left is the description.
+
+        "vintage graphic tee under $30, size M"
+          → {"description": "vintage graphic tee", "size": "M", "max_price": 30.0}
+    """
+    text = query
+    max_price = None
+    price = re.search(
+        r"(?:under|below|less than|max|<)\s*\$?\s*(\d+(?:\.\d+)?)|\$(\d+(?:\.\d+)?)",
+        text, re.IGNORECASE,
+    )
+    if price:
+        max_price = float(price.group(1) or price.group(2))
+        text = text[: price.start()] + " " + text[price.end():]
+
+    size = None
+    size_match = re.search(
+        r"\bsize\s+(us\s*\d+(?:\.\d+)?|w\d+(?:\s*l\d+)?|xxs|xs|s|m|l|xl|xxl)\b",
+        text, re.IGNORECASE,
+    )
+    if size_match:
+        size = size_match.group(1).upper()
+        text = text[: size_match.start()] + " " + text[size_match.end():]
+
+    description = re.sub(r"[,.]", " ", text)
+    description = re.sub(r"^\s*(i'?m\s+)?(looking for|i want|find me|need)\s+", "", description.strip(), flags=re.IGNORECASE)
+    description = " ".join(description.split())
+    return {"description": description, "size": size, "max_price": max_price}
+
+
+def _no_results_message(parsed: dict) -> str:
+    """Say what was searched and which constraint to loosen — not just 'No results'."""
+    searched = [f"'{parsed['description']}'"]
+    tips = []
+    if parsed["size"]:
+        searched.append(f"size {parsed['size']}")
+        tips.append("drop the size")
+    if parsed["max_price"] is not None:
+        searched.append(f"under ${parsed['max_price']:.0f}")
+        tips.append("raise the price limit")
+    tips.append("use broader words (e.g. 'dress' instead of 'designer ballgown')")
+    return (
+        f"No listings matched {', '.join(searched)}. "
+        f"Try to {', or '.join(tips)}."
+    )
 
 
 # ── running it directly ───────────────────────────────────────────────────────
