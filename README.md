@@ -91,6 +91,13 @@ All three live in `tools.py`.
 - **Returns:** `str` — a 2–4 sentence caption mentioning the item, price and platform once each, with at most two emoji and two hashtags. Brand is only included in the prompt when it isn't `None`.
 - **When it has nothing:** If `outfit` is empty or whitespace, returns `"Couldn't write a fit card for <title>: no outfit suggestion was provided."` without calling the model.
 
+### `compare_price` (stretch — fourth tool)
+
+- **What it does:** Compares a listing's price with the median price of every *other* listing in the same category. No model call.
+- **Inputs:** `item` (dict — a listing dict).
+- **Returns:** `dict` with `item_price` (float), `typical_price` (float — the category median), `n_compared` (int), and `verdict` (str): `"good deal"` if price ≤ 80% of the median, `"above typical"` if ≥ 125%, otherwise `"fair"`.
+- **When it has nothing:** If no other listing shares the category, returns `typical_price: None`, `n_compared: 0`, `verdict: "no comparison"`. Never raises.
+
 ---
 
 ## Planning Loop
@@ -99,17 +106,27 @@ All three live in `tools.py`.
 `session["error"]` naming what was searched and what to loosen (drop the size,
 raise the price limit, use broader words), and return the session without
 calling `suggest_outfit`. Otherwise, take the first result as
-`session["selected_item"]` and go to `suggest_outfit`, then `create_fit_card`.
+`session["selected_item"]`, run `compare_price` on it, then go to
+`suggest_outfit`, then `create_fit_card`.
 
-**Where it lives:** `agent.py::run_agent` (message built by `agent.py::_no_results_message`)
+**Second branch (stretch):** If `compare_price` returns `"above typical"` for
+the selected item, and another search result in the same category is cheaper
+and not itself above typical, the loop moves the original into
+`session["swapped_from"]`, selects the cheaper one, and re-runs `compare_price`
+on it. Otherwise it keeps the first result.
+
+**Where it lives:** `agent.py::run_agent` (empty-search message built by
+`agent.py::_no_results_message`; swap candidate chosen by
+`agent.py::_cheaper_alternative`)
 
 **How the query is parsed:** Regex, in `agent.py::parse_query`. A price comes
 from `under/below/less than/max $N` or a bare `$N`; a size from `size X` (letter
-sizes, `US 9`, `W30 L30`). Both are cut out of the text and what remains
+sizes, `US 9`, `W30 L30`; a bare number like `size 8` is read as `US 8`). Both are cut out of the text and what remains
 (minus filler like "looking for") is the description.
 
 **What moves through the session:** `query` → `parsed` → `search_results` →
-`selected_item` → `outfit_suggestion` → `fit_card` (or `error`). Each loop
+`selected_item` → `price_check` (→ `swapped_from` if the second branch fires)
+→ `outfit_suggestion` → `fit_card` (or `error`). Each loop
 iteration reads the session to decide the next step — the first `None` field
 determines which tool runs — and `trace.check_iterations` caps the loop at
 `config.MAX_ITERATIONS`.
@@ -124,6 +141,7 @@ determines which tool runs — and `trace.check_iterations` caps the loop at
 $ python app.py ask 'vintage graphic tee under $30, size M'
 
   Found:    Y2K Baby Tee — Butterfly Print — $18.0 on depop
+  Price:    fair (typical tops price $21.50, 14 compared)
 
   Outfit:   **Outfit 1**
 - Y2K Baby Tee — Butterfly Print
@@ -141,7 +159,7 @@ $ python app.py ask 'vintage graphic tee under $30, size M'
 
   Fit card: Scored this little butterfly tee on Depop for just $18 and I’m so obsessed with the pink and purple Y2K print. It’s giving total 2000s mall rat energy, especially paired with baggy denim or wide-leg trousers. 🦋✨ #y2kstyle #depopfind
 
-2 model calls this session, 468 prompt + 150 output tokens
+0 model calls this session, 2 served from cache
 ```
 
 ```
@@ -187,8 +205,6 @@ Couldn't write a fit card for Vintage Levi's 501 Jeans — Medium Wash: no outfi
 
 ## How I Used AI
 
-<!-- TODO(you): check these match your experience and reword in your own voice. -->
-
 **Moment 1**
 
 - *What I asked for:* I had Claude Code implement `search_listings` from the spec in the starter docstring, which warns that `"s" in "us 9"` is True.
@@ -200,6 +216,178 @@ Couldn't write a fit card for Vintage Levi's 501 Jeans — Medium Wash: no outfi
 - *What I asked for:* A `create_fit_card` prompt that sounds like a real post and mentions price and platform once.
 - *What came back:* The first full run produced *"It's up on my Depop right now for just $19. Grab it before I change my mind"* — a seller's caption, not a buyer's.
 - *What I changed:* I changed the prompt to say the caption is from someone who just **bought** the find and is not selling it. The next run read *"Scored this little butterfly tee on Depop for just $18…"*.
+
+**Disclosure — criteria.** The brief says not to have a model write the
+acceptance criteria. I asked Claude Code to write criteria 3–5 and the reasons
+under all five anyway, to finish on time. It first drafted criterion 4 as
+"every fit card is 2–4 sentences … — 4 of 5 cards", which contradicts itself;
+I had it reworded to "at least 4 of the 5 cards" in a follow-up commit.
+
+---
+
+## Stretch Features — what was built
+
+Declared at the top of this README (commit "Declare the three stretch features
+before building them") before any of the code below existed.
+
+### 1. Fourth tool: `compare_price`
+
+Defined in `tools.py::compare_price`, called by `agent.py::run_agent` on every
+successful search; its result is stored in `session["price_check"]` and
+printed on the `Price:` line. What it returns is in the Tool Inventory above.
+Run where the agent called it:
+
+```
+$ python app.py ask 'platform sneakers size 8'
+
+  Found:    Platform Sneakers — White Chunky Sole — $48.0 on poshmark
+  Price:    fair (typical shoes price $44.00, 3 compared)
+
+  Outfit:   **Outfit 1**
+Pair the platform sneakers with the baggy straight-leg jeans, white ribbed tank top, and vintage black denim jacket. Accessorize with the black crossbody bag.
+
+**Outfit 2**
+Pair the platform sneakers with the wide-leg khaki trousers and oversized grey crewneck sweatshirt. Add the brown leather belt to complete the look.
+
+  Fit card: Score! Just snagged these chunky platform sneakers on Poshmark for $48 and they are giving major Y2K streetwear energy. Can't wait to style them with baggy jeans and my favorite vintage jacket. 👟✨ #thrifted #y2kstyle
+
+2 model calls this session, 451 prompt + 128 output tokens
+```
+
+### 2. Second branch: swap an overpriced pick
+
+**Condition:** `session["price_check"]["verdict"] == "above typical"` and a
+cheaper same-category result exists. For `'leather jacket'`, search ranks the
+$75 leather bomber first; the outerwear median is $40, so it's above typical,
+and the loop switches to the $42 denim jacket from the same results. Run log
+where that branch was taken (`Skipped:` is printed only when
+`session["swapped_from"]` is set):
+
+```
+$ python app.py ask 'leather jacket'
+
+  Skipped:  90s Leather Bomber — Black — $75.0 is above typical for outerwear, so I picked a cheaper match instead
+  Found:    Denim Jacket — Light Wash, Cropped — $42.0 on poshmark
+  Price:    fair (typical outerwear price $40.00, 7 compared)
+
+  Outfit:   Outfit 1: Pair the Wrangler denim jacket with the white ribbed tank top, baggy straight-leg jeans, and chunky white sneakers. Add the black crossbody bag to complete the casual, streetwear-inspired look.
+
+Outfit 2: Layer the denim jacket over the black cropped zip hoodie, paired with the wide-leg khaki trousers and black combat boots. Accessorize with the brown leather belt for a stylish contrast between vintage and classic pieces.
+
+  Fit card: Just scored the absolute dream light wash Wrangler denim jacket on Poshmark for only $42 and I'm obsessed. Can't wait to style it with baggy jeans and chunky sneakers for the ultimate casual streetwear fit. 🤌✨ 
+
+#thriftfinds #streetwear
+
+2 model calls this session, 464 prompt + 146 output tokens
+```
+
+Compare with the sneakers run above, where the pick was `fair` and no swap
+happened.
+
+### 3. Style memory
+
+`memory.py` keeps a wardrobe in `memory/wardrobe.json` (git-ignored, since it's
+per-user state). `python app.py ask '...' --memory` uses it as the wardrobe and
+saves each successful find into it. In run 1 the memory is empty, so
+`suggest_outfit` takes its empty-wardrobe path and gives generic basics. Run 2
+loads the band tee that run 1 saved, and both outfits are built around it by
+name:
+
+```
+$ python app.py ask --forget
+(style memory cleared)
+```
+
+```
+$ python app.py ask 'vintage graphic tee under $30' --memory
+(style memory: 0 saved — nothing yet)
+
+  Found:    Vintage Band Tee — Faded Grey — $19.0 on depop
+  Price:    fair (typical tops price $21.50, 14 compared)
+
+  Outfit:   **Outfit 1: Effortless Streetwear**
+*   **Top:** Vintage band tee layered over a long white crewneck tee
+*   **Bottoms:** Relaxed-fit light blue denim jeans
+*   **Footwear:** Classic white canvas sneakers
+*   **Accessories:** Black canvas tote bag and silver chain necklace
+
+**Outfit 2: Grunge Casual**
+*   **Top:** Vintage band tee worn solo
+*   **Bottoms:** Black straight-leg denim jeans
+*   **Outerwear:** Oversized black zip-up hoodie
+*   **Footwear:** Beat-up retro sneakers
+*   **Accessories:** Black beanie
+
+  Fit card: Scored this faded grey vintage band tee on Depop for just $19 and the wash on it is literally insane. Already planning to live in this with black straight-legs and an oversized hoodie for that 90s grunge look. 🖤🎸 #thriftfinds
+
+  Saved to style memory: Vintage Band Tee — Faded Grey
+
+2 model calls this session, 377 prompt + 190 output tokens
+```
+
+```
+$ python app.py ask 'baggy jeans' --memory
+(style memory: 1 saved — Vintage Band Tee — Faded Grey)
+
+  Found:    Baggy Carpenter Jeans — Dark Wash — $36.0 on depop
+  Price:    fair (typical bottoms price $30.00, 9 compared)
+
+  Outfit:   **Outfit 1: Grunge Streetwear**
+Pair the baggy carpenter jeans with your Vintage Band Tee — Faded Grey. Tuck the tee in loosely, add a worn leather belt, and finish with chunky black skate shoes or beat-up sneakers for an effortless 90s aesthetic.
+
+**Outfit 2: Relaxed Workwear**
+Wear the dark wash jeans with the Vintage Band Tee — Faded Grey left untucked for a relaxed silhouette. Layer an open flannel shirt over top and complete the look with classic white trainers and a beanie.
+
+  Fit card: Absolute score securing these baggy carpenter jeans on Depop for just $36. The dark indigo wash and fit are giving me major 90s streetwear vibes. Can’t wait to style them oversized with a faded band tee and beat-up skate shoes. 
+
+#thriftfinds #streetwear
+
+  Saved to style memory: Baggy Carpenter Jeans — Dark Wash
+
+2 model calls this session, 370 prompt + 173 output tokens
+```
+
+```
+$ cat memory/wardrobe.json
+{
+  "items": [
+    {
+      "id": "lst_033",
+      "name": "Vintage Band Tee \u2014 Faded Grey",
+      "category": "tops",
+      "colors": [
+        "grey",
+        "charcoal"
+      ],
+      "style_tags": [
+        "vintage",
+        "grunge",
+        "band tee",
+        "graphic tee",
+        "streetwear"
+      ],
+      "notes": "Found on depop for $19.00"
+    },
+    {
+      "id": "lst_031",
+      "name": "Baggy Carpenter Jeans \u2014 Dark Wash",
+      "category": "bottoms",
+      "colors": [
+        "dark blue",
+        "indigo"
+      ],
+      "style_tags": [
+        "90s",
+        "vintage",
+        "streetwear",
+        "baggy",
+        "workwear"
+      ],
+      "notes": "Found on depop for $36.00"
+    }
+  ]
+}
+```
 
 <!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
 
