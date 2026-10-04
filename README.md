@@ -34,6 +34,25 @@
 
 <!-- ═══════════════════════ UNIT 3 — THE BUILD ═══════════════════════ -->
 
+## Stretch Features (declared before building)
+
+I'm attempting all three stretch features. Declared here first; the sections
+further down describe what each one changed once built.
+
+1. **A fourth tool — `compare_price(item)`.** Compares the selected listing's
+   price with the median price of other listings in the same category and
+   returns a verdict (`good deal` / `fair` / `above typical` / `no comparison`).
+2. **A second branch — swap an overpriced pick.** If `compare_price` says the
+   top result is `above typical` and another search result in the same category
+   is cheaper, the loop selects the cheaper one instead (and records why) before
+   calling `suggest_outfit`.
+3. **Style memory — `--memory`.** With `python app.py ask '...' --memory`, the
+   wardrobe is loaded from `memory/wardrobe.json` instead of the example
+   wardrobe, and each successful find is saved into it, so the next run's
+   outfits can use pieces found in earlier runs. `--forget` clears it.
+
+---
+
 ## What This Does
 
 You type what you're hunting for in plain language — e.g. `'vintage graphic tee
