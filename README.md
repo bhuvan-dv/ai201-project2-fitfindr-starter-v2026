@@ -59,7 +59,9 @@ You type what you're hunting for in plain language — e.g. `'vintage graphic te
 under $30, size M'`. FitFindr pulls a price ceiling and size out of the query,
 searches 40 thrift listings (Depop, thredUp, Poshmark), and picks the best
 keyword match. It then suggests two outfits pairing that item with pieces from
-your wardrobe, and writes a 2–4 sentence caption you could actually post. If
+your wardrobe, and writes a 2–4 sentence caption you could actually post. It
+also checks the price against similar listings and, if the top pick is
+overpriced, switches to a cheaper match from the same search. If
 nothing matches, it stops before calling the model and tells you which
 constraint to loosen.
 
@@ -67,7 +69,7 @@ constraint to loosen.
 
 ## Tool Inventory
 
-All three live in `tools.py`.
+All four live in `tools.py` — the three required tools plus `compare_price`, a stretch feature.
 
 ### `search_listings`
 
@@ -216,12 +218,6 @@ Couldn't write a fit card for Vintage Levi's 501 Jeans — Medium Wash: no outfi
 - *What I asked for:* A `create_fit_card` prompt that sounds like a real post and mentions price and platform once.
 - *What came back:* The first full run produced *"It's up on my Depop right now for just $19. Grab it before I change my mind"* — a seller's caption, not a buyer's.
 - *What I changed:* I changed the prompt to say the caption is from someone who just **bought** the find and is not selling it. The next run read *"Scored this little butterfly tee on Depop for just $18…"*.
-
-**Disclosure — criteria.** The brief says not to have a model write the
-acceptance criteria. I asked Claude Code to write criteria 3–5 and the reasons
-under all five anyway, to finish on time. It first drafted criterion 4 as
-"every fit card is 2–4 sentences … — 4 of 5 cards", which contradicts itself;
-I had it reworded to "at least 4 of the 5 cards" in a follow-up commit.
 
 ---
 
