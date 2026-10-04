@@ -13,9 +13,6 @@
 > python app.py ask 'vintage graphic tee under $30'
 > ```
 >
-> All three tools are stubs, so that last command will do nothing useful yet.
-> That's the starting position.
->
 > **The rest of this file is your submission.** Fill it in as you go.
 
 ---
@@ -39,123 +36,151 @@
 
 ## What This Does
 
-<!-- Three or four sentences: what a user asks for, and what they get back. -->
-
-
+You type what you're hunting for in plain language — e.g. `'vintage graphic tee
+under $30, size M'`. FitFindr pulls a price ceiling and size out of the query,
+searches 40 thrift listings (Depop, thredUp, Poshmark), and picks the best
+keyword match. It then suggests two outfits pairing that item with pieces from
+your wardrobe, and writes a 2–4 sentence caption you could actually post. If
+nothing matches, it stops before calling the model and tells you which
+constraint to loosen.
 
 ---
 
 ## Tool Inventory
 
-<!-- Four lines per tool. This is worth 2 points and it's the single most
-     common place students lose them.
-
-     "Returns a list" earns NOTHING. The description has to say what is IN
-     the list.
-
-     The empty case isn't optional either — it's the thing your loop branches
-     on, and if you don't decide it here you'll discover it as a crash in
-     Milestone 5. -->
+All three live in `tools.py`.
 
 ### `search_listings`
 
-- **What it does:**
-- **Inputs:** <!-- name and type each: `max_price` (float), not "a price" -->
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Filters `data/listings.json` by price ceiling and size, then ranks what's left by keyword overlap with the description (title hit = 2 points, hit in description/category/style_tags/colors/brand = 1).
+- **Inputs:** `description` (str), `size` (str or None), `max_price` (float or None, inclusive).
+  Size is a **token** match, not a substring: `"M"` matches `M`, `S/M`, `M/L`; `"L"` matches `L/XL` but not `XL`; shoe/waist sizes (`US 9`, `W30`) only match whole; `One Size` items match any letter size.
+- **Returns:** `list[dict]` of listing dicts, best score first (ties → cheaper first), at most `config.SEARCH_RESULT_LIMIT` (10). Each dict has `id`, `title`, `description`, `category`, `style_tags` (list), `size`, `condition`, `price` (float), `colors` (list), `brand` (str or None), `platform`.
+- **When it has nothing:** `[]` — an empty list, never `None` and never an exception. Also `[]` if the description has no usable keywords.
 
 ### `suggest_outfit`
 
-- **What it does:**
-- **Inputs:**
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Asks the model for two outfits built around the new item, naming pieces from the user's wardrobe.
+- **Inputs:** `new_item` (dict — one listing dict from `search_listings`), `wardrobe` (dict with an `items` key holding a list of wardrobe-item dicts: `name`, `category`, `colors`, `style_tags`, `notes`).
+- **Returns:** `str` — non-empty outfit text, under ~90 words, naming owned pieces exactly as written in the wardrobe.
+- **When it has nothing:** If `wardrobe["items"]` is empty, it returns general styling advice using common basics instead of failing. If the model returns an empty string, it returns a one-line fallback (`"Style the <title> with simple basics in neutral colors."`). It never returns `""`.
 
 ### `create_fit_card`
 
-- **What it does:**
-- **Inputs:**
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Asks the model for a social-media caption in the voice of someone who just bought the item.
+- **Inputs:** `outfit` (str — output of `suggest_outfit`), `new_item` (dict — the same listing dict).
+- **Returns:** `str` — a 2–4 sentence caption mentioning the item, price and platform once each, with at most two emoji and two hashtags. Brand is only included in the prompt when it isn't `None`.
+- **When it has nothing:** If `outfit` is empty or whitespace, returns `"Couldn't write a fit card for <title>: no outfit suggestion was provided."` without calling the model.
 
 ---
 
 ## Planning Loop
 
-<!-- Your branch rule, stated as a rule — the condition AND both paths — plus
-     the file and function that holds it.
+**Branch rule:** If `search_listings` returns an empty list, put a message in
+`session["error"]` naming what was searched and what to loosen (drop the size,
+raise the price limit, use broader words), and return the session without
+calling `suggest_outfit`. Otherwise, take the first result as
+`session["selected_item"]` and go to `suggest_outfit`, then `create_fit_card`.
 
-     Like this:
-       "If search_listings returns an empty list, put a message in the session
-        and stop. Otherwise take the first result and go to suggest_outfit."
-        — agent.py::run_agent
+**Where it lives:** `agent.py::run_agent` (message built by `agent.py::_no_results_message`)
 
-     The grader checks your code against what you claim here, so the file and
-     function have to be real. -->
+**How the query is parsed:** Regex, in `agent.py::parse_query`. A price comes
+from `under/below/less than/max $N` or a bare `$N`; a size from `size X` (letter
+sizes, `US 9`, `W30 L30`). Both are cut out of the text and what remains
+(minus filler like "looking for") is the description.
 
-**Branch rule:**
-
-**Where it lives:** `agent.py::run_agent`
-
-**How the query is parsed:** <!-- regex, string splitting, or asking the model — say which -->
-
-**What moves through the session:** <!-- which fields, in what order -->
+**What moves through the session:** `query` → `parsed` → `search_results` →
+`selected_item` → `outfit_suggestion` → `fit_card` (or `error`). Each loop
+iteration reads the session to decide the next step — the first `None` field
+determines which tool runs — and `trace.check_iterations` caps the loop at
+`config.MAX_ITERATIONS`.
 
 ---
 
 ## Sample Run
 
-<!-- Two things go here.
-
-     1. One FULL query and its output, pasted as text.
-     2. Your three per-tool terminal tests — the command and what it printed. -->
-
-**One full query**
+**One full query** (plus the empty-search path, to show the branch)
 
 ```
-$ python app.py ask '...'
+$ python app.py ask 'vintage graphic tee under $30, size M'
 
+  Found:    Y2K Baby Tee — Butterfly Print — $18.0 on depop
+
+  Outfit:   **Outfit 1**
+- Y2K Baby Tee — Butterfly Print
+- Baggy straight-leg jeans, dark wash
+- Vintage black denim jacket
+- Chunky white sneakers
+- Black crossbody bag
+
+**Outfit 2**
+- Y2K Baby Tee — Butterfly Print
+- Wide-leg khaki trousers
+- Black cropped zip hoodie
+- Black combat boots
+- Brown leather belt
+
+  Fit card: Scored this little butterfly tee on Depop for just $18 and I’m so obsessed with the pink and purple Y2K print. It’s giving total 2000s mall rat energy, especially paired with baggy denim or wide-leg trousers. 🦋✨ #y2kstyle #depopfind
+
+2 model calls this session, 468 prompt + 150 output tokens
+```
+
+```
+$ python app.py ask 'designer ballgown size XXS under $5'
+
+  No listings matched 'designer ballgown', size XXS, under $5. Try to drop the size, or raise the price limit, or use broader words (e.g. 'dress' instead of 'designer ballgown').
+
+0 model calls this session
 ```
 
 **The three tools, tested one at a time**
 
 ```
 $ python -c "from tools import search_listings; print(search_listings('graphic tee', max_price=30))"
-
+[{'id': 'lst_006', 'title': 'Graphic Tee — 2003 Tour Bootleg Style', 'description': 'Vintage-style bootleg tee with faded graphic. Slightly boxy fit. 100% cotton, soft and worn-in.', 'category': 'tops', 'style_tags': ['graphic tee', 'vintage', 'grunge', 'streetwear', 'band tee'], 'size': 'L', 'condition': 'good', 'price': 24.0, 'colors': ['black'], 'brand': None, 'platform': 'depop'}, {'id': 'lst_002', 'title': 'Y2K Baby Tee — Butterfly Print', 'description': 'Super cute early 2000s baby tee with butterfly graphic. Fitted crop length. Tag says medium but fits like a small.', 'category': 'tops', 'style_tags': ['y2k', 'vintage', 'graphic tee', 'cottagecore'], 'size': 'S/M', 'condition': 'excellent', 'price': 18.0, 'colors': ['white', 'pink', 'purple'], 'brand': None, 'platform': 'depop'}, {'id': 'lst_033', 'title': 'Vintage Band Tee — Faded Grey', 'description': 'Faded grey band-style tee with distressed graphic. Crew neck. Fits boxy. Well-loved but no holes or major damage.', 'category': 'tops', 'style_tags': ['vintage', 'grunge', 'band tee', 'graphic tee', 'streetwear'], 'size': 'L', 'condition': 'fair', 'price': 19.0, 'colors': ['grey', 'charcoal'], 'brand': None, 'platform': 'depop'}, {'id': 'lst_017', 'title': 'Mesh Long-Sleeve Top — Black', 'description': 'Sheer black mesh long-sleeve. Great for layering under a graphic tee or over a bralette. Stretchy material, fits true to size.', 'category': 'tops', 'style_tags': ['y2k', 'grunge', 'goth', 'layering'], 'size': 'S/M', 'condition': 'excellent', 'price': 15.0, 'colors': ['black'], 'brand': None, 'platform': 'depop'}, {'id': 'lst_024', 'title': 'Vintage Polo Shirt — Forest Green', 'description': 'Classic polo in forest green. Short sleeve, ribbed collar. Slightly boxy. The kind of piece that goes with everything.', 'category': 'tops', 'style_tags': ['vintage', 'preppy', 'classic', 'earth tones'], 'size': 'M', 'condition': 'good', 'price': 18.0, 'colors': ['green', 'forest green'], 'brand': 'Ralph Lauren', 'platform': 'thredUp'}, {'id': 'lst_003', 'title': 'Oversized Flannel Shirt — Plaid Red/Black', 'description': 'Classic oversized flannel. Great layering piece. A few tiny pulls in the fabric but nothing visible when worn.', 'category': 'tops', 'style_tags': ['grunge', 'vintage', 'flannel', 'streetwear', 'layering'], 'size': 'XL (oversized)', 'condition': 'good', 'price': 22.0, 'colors': ['red', 'black'], 'brand': 'Woolrich', 'platform': 'thredUp'}, {'id': 'lst_015', 'title': 'Vintage Graphic Hoodie — Faded Black', 'description': 'Faded black pullover hoodie with barely-visible vintage graphic on the chest. Cozy interior. Some pilling but adds to the worn-in look.', 'category': 'tops', 'style_tags': ['vintage', 'grunge', 'graphic', 'streetwear'], 'size': 'L', 'condition': 'fair', 'price': 26.0, 'colors': ['black', 'charcoal'], 'brand': None, 'platform': 'depop'}, {'id': 'lst_011', 'title': 'Low-Rise Cargo Pants — Khaki', 'description': 'Y2K era low-rise cargo pants. Lots of pockets. Khaki color, slightly distressed at the hems. Great for layering with a long tee.', 'category': 'bottoms', 'style_tags': ['y2k', 'cargo', '2000s', 'streetwear'], 'size': 'W29', 'condition': 'fair', 'price': 27.0, 'colors': ['khaki', 'tan'], 'brand': None, 'platform': 'poshmark'}]
 ```
 
 ```
-$ python -c "from tools import suggest_outfit; ..."
-
+$ python -c "from tools import search_listings; print(search_listings('designer ballgown', 'XXS', 5))"
+[]
 ```
 
 ```
-$ python -c "from tools import create_fit_card; ..."
+$ python -c "from tools import suggest_outfit; from utils.data_loader import get_example_wardrobe, load_listings; print(suggest_outfit(load_listings()[0], get_example_wardrobe()))"
+**Outfit 1**
+Pair the vintage Levi's 501 jeans with the white ribbed tank top, black cropped zip hoodie, and chunky white sneakers. Add the black crossbody bag for a casual, effortless streetwear look.
 
+**Outfit 2**
+Style the vintage Levi's 501 jeans with the oversized grey crewneck sweatshirt, black combat boots, and the brown leather belt. Layer the vintage black denim jacket on top for a classic, edgy vintage aesthetic.
+```
+
+```
+$ python -c "from tools import create_fit_card; from utils.data_loader import load_listings; print(create_fit_card('jeans and white sneakers', load_listings()[0]))"
+Scored these vintage Levi's 501s on Depop for just $38 and I am never taking them off. The medium wash has that perfectly broken-in indigo fade that's impossible to fake. Can't wait to wear these with crisp white sneakers for that ultimate effortless streetwear look. 👖✨ #thrifted #levis
+```
+
+```
+$ python -c "from tools import create_fit_card; from utils.data_loader import load_listings; print(create_fit_card('', load_listings()[0]))"
+Couldn't write a fit card for Vintage Levi's 501 Jeans — Medium Wash: no outfit suggestion was provided.
 ```
 
 ---
 
 ## How I Used AI
 
-<!-- Two specific moments. What you asked, what came back, what you changed.
-
-     "I used Claude to help me code" is not enough.
-
-     "I gave Claude my search_listings spec. It returned None on no match
-     instead of an empty list, so I changed it" is the level we want. -->
+<!-- TODO(you): check these match your experience and reword in your own voice. -->
 
 **Moment 1**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I had Claude Code implement `search_listings` from the spec in the starter docstring, which warns that `"s" in "us 9"` is True.
+- *What came back:* A size filter that splits sizes into tokens (`S/M` → `S`, `M`) and compares shoe/waist sizes whole, so `M` matches `S/M` but `S` doesn't match `US 9` and `L` doesn't match `XL`.
+- *What I changed:* I checked it against every size in the data (`L/XL`, `One Size (adjustable)`, `W30 L30`, …) and kept the rule that one-size items match any letter size, then wrote that rule into the Tool Inventory.
 
 **Moment 2**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* A `create_fit_card` prompt that sounds like a real post and mentions price and platform once.
+- *What came back:* The first full run produced *"It's up on my Depop right now for just $19. Grab it before I change my mind"* — a seller's caption, not a buyer's.
+- *What I changed:* I changed the prompt to say the caption is from someone who just **bought** the find and is not selling it. The next run read *"Scored this little butterfly tee on Depop for just $18…"*.
 
 <!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
 
