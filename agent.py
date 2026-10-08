@@ -17,7 +17,8 @@ import re
 
 import config
 import trace
-from tools import search_listings, suggest_outfit, create_fit_card, compare_price
+from mcp_client import call_tool
+from tools import suggest_outfit, create_fit_card, compare_price
 from generate import ModelUnavailable
 
 
@@ -120,9 +121,11 @@ def run_agent(query: str, wardrobe: dict) -> dict:
 
         if not session["search_results"] and session["selected_item"] is None:
             p = session["parsed"]
-            session["search_results"] = search_listings(
-                p["description"], p["size"], p["max_price"]
-            )
+            session["search_results"] = call_tool("search_listings", {
+                "description": p["description"],
+                "size": p["size"],
+                "max_price": p["max_price"],
+            })
 
             # THE BRANCH: nothing found → explain what to change and stop.
             if not session["search_results"]:

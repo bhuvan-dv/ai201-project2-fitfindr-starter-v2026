@@ -67,24 +67,32 @@ from tools import search_listings as _search_listings_impl  # noqa: F401 — you
 mcp = FastMCP("fitfindr", log_level="WARNING")
 
 
-# ── TODO: uncomment and fill this in ──────────────────────────────────────────
-#
-# @mcp.tool()
-# def search_listings(
-#     description: str,
-#     size: str | None = None,
-#     max_price: float | None = None,
-# ) -> list[dict]:
-#     """
-#     <-- YOUR DESCRIPTION GOES HERE.
-#
-#         One or two sentences. What does this tool do, what does it need, and
-#         what does it give back when it finds nothing? Written for a reader
-#         who cannot see the code.
-#     """
-#     return _search_listings_impl(description, size, max_price)
-#
-# ──────────────────────────────────────────────────────────────────────────────
+@mcp.tool()
+def search_listings(
+    description: str,
+    size: str | None = None,
+    max_price: float | None = None,
+) -> list[dict]:
+    """
+    Search a catalog of 40 secondhand clothing listings by keyword, and
+    optionally filter by size and a maximum price.
+
+    description: free-text keywords to match against the listing's title,
+        category, style tags, colors, and brand (e.g. "vintage graphic tee").
+    size: a size token to filter by, case-insensitive (e.g. "M", "US 9",
+        "W30"). Matches a listing if the token is one of its size's
+        slash/space-separated parts — "M" matches "S/M" but not "US 9", and
+        "L" matches "L/XL" but not "XL". Omit to skip size filtering.
+    max_price: the highest price allowed, in whole or fractional US dollars,
+        inclusive. Omit to skip price filtering.
+
+    Returns a list of matching listing dicts (each with id, title,
+    description, category, style_tags, size, condition, price, colors,
+    brand, platform), best keyword match first, at most 10 results.
+    Returns an empty list — never null, never an error — when nothing
+    matches the given description, size, and price together.
+    """
+    return _search_listings_impl(description, size, max_price)
 #
 # Two notes on the block above.
 #
