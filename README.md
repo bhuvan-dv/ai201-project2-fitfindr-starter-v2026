@@ -464,22 +464,63 @@ that produced it:
      the same length, your branch isn't working — and this is the fastest way
      anyone will ever find that out. -->
 
-**Happy path**
+**Happy path** — `python app.py ask 'vintage graphic tee under $30' --trace`
 
 ```
-
+[1] search_listings (via MCP)
+      in:  description='vintage graphic tee', size=None, max_price=30.0
+      out: 10 items: Vintage Band Tee — Faded Grey, Graphic Tee — 2003 Tour Bootleg Style, Y2K Baby Tee — Butterfly Print … +7 more
+[2] compare_price
+      in:  item='Vintage Band Tee — Faded Grey'
+      out: verdict='fair', typical_price=21.5, n_compared=14
+[3] suggest_outfit
+      in:  item='Vintage Band Tee — Faded Grey', wardrobe_items=10
+      out: **Outfit 1:** Pair the vintage band tee with the Baggy straight-leg jeans, black denim jacket, black combat bo…
+[4] create_fit_card
+      in:  outfit_len=415 chars
+      out: Scored this perfectly faded grey band tee on Depop for just $19 and I'm honestly obsessed with the grunge ener…
 ```
 
-**Empty search**
+**Empty search** — `python app.py ask 'designer ballgown size XXS under $5' --trace`
 
 ```
-
+[1] search_listings (via MCP)
+      in:  description='designer ballgown', size='XXS', max_price=5.0
+      out: [] (empty)
+[2] branch: empty search
+      →    stopping before suggest_outfit
 ```
 
-**On the MCP move:** <!-- what changed in your code, and whether anything
-behaved differently afterwards. If the rewire didn't work, say exactly where it
-broke — the error text and the last thing that worked. That earns the point in
-full. -->
+Four steps on the happy path, two on the empty-search path — the branch stops
+before `suggest_outfit` and `create_fit_card` are ever called, exactly as the
+Planning Loop's branch rule says it should.
+
+**Failure modes triggered on purpose**
+
+| Failure | How it was triggered | Message produced |
+|---|---|---|
+| Empty search | `python app.py ask 'designer ballgown size XXS under $5'` | "No listings matched 'designer ballgown', size XXS, under $5. Try to drop the size, or raise the price limit, or use broader words (e.g. 'dress' instead of 'designer ballgown')." |
+| Empty wardrobe | `python app.py ask 'denim jacket under $50' --empty-wardrobe` | No error — `suggest_outfit` takes the empty-wardrobe branch and returns general styling advice using common basics. Worked without a handler; already part of the unit-3 spec. |
+| Model unavailable | corrupted one character of `GEMINI_API_KEY` in `.env`, then `AI201_CACHE=0 python app.py ask 'studded denim vest'` (a query never run before, caching forced off so it couldn't be served from cache) | "Couldn't suggest an outfit — the model couldn't be reached: The model rejected your API key. Check GEMINI_API_KEY in your .env file, or create a fresh key at aistudio.google.com." |
+
+Reflecting on each message as something a user with no view of the code would read: the empty-search and model-unavailable messages both name a specific next action (loosen a named constraint; check a named env var). The empty-wardrobe case isn't an error message at all — it's a silent fallback to generic advice, which is the correct behavior but means there's nothing to "act on" because nothing went wrong from the user's side.
+
+**On the MCP move:** `search_listings` is registered on a `FastMCP` server in
+`mcp_server.py` with a description and typed inputs copied from the Tool
+Inventory above. `agent.py::run_agent` no longer imports `search_listings`
+directly — it calls `mcp_client.call_tool("search_listings", {...})`, which
+starts the server over stdio, sends the call, and tears it down. The trace
+step is labeled `search_listings (via MCP)` so the MCP call is visible in the
+trace itself (step 1, both paths above). The return value — a list of listing
+dicts, `[]` when nothing matches — is unchanged; the only difference is the
+shape of the *call*, not the result.
+
+One thing the MCP move exposed: triggering the model-unavailable failure
+(below) showed that nothing in `agent.py` caught `ModelUnavailable` before
+this unit — it would have bubbled past `run_agent` and shown up as a
+`CRASHED` row in `run_eval.py`, not a clean miss. Milestone 2 added a
+`try/except ModelUnavailable` around the two model-calling steps for exactly
+that reason.
 
 
 

@@ -126,16 +126,28 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                 "size": p["size"],
                 "max_price": p["max_price"],
             })
+            trace.step(
+                "search_listings (via MCP)",
+                inputs=f"description={p['description']!r}, size={p['size']!r}, max_price={p['max_price']!r}",
+                returned=session["search_results"],
+            )
 
             # THE BRANCH: nothing found → explain what to change and stop.
             if not session["search_results"]:
                 session["error"] = _no_results_message(p)
+                trace.step("branch: empty search", note="stopping before suggest_outfit")
                 return session
 
             session["selected_item"] = session["search_results"][0]
 
         elif session["price_check"] is None:
             session["price_check"] = compare_price(session["selected_item"])
+            check = session["price_check"]
+            trace.step(
+                "compare_price",
+                inputs=f"item={session['selected_item']['title']!r}",
+                returned=f"verdict={check['verdict']!r}, typical_price={check['typical_price']}, n_compared={check['n_compared']}",
+            )
 
             # SECOND BRANCH: the pick is overpriced for its category and a
             # cheaper same-category result exists → switch to that one.
@@ -145,15 +157,39 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                     session["swapped_from"] = session["selected_item"]
                     session["selected_item"] = alternative
                     session["price_check"] = compare_price(alternative)
+                    trace.step(
+                        "branch: overpriced pick",
+                        note=f"swapped to {alternative['title']}",
+                    )
 
         elif session["outfit_suggestion"] is None:
-            session["outfit_suggestion"] = suggest_outfit(
-                session["selected_item"], session["wardrobe"]
+            try:
+                session["outfit_suggestion"] = suggest_outfit(
+                    session["selected_item"], session["wardrobe"]
+                )
+            except ModelUnavailable as exc:
+                session["error"] = f"Couldn't suggest an outfit — the model couldn't be reached: {exc}"
+                trace.step("suggest_outfit", note=f"ModelUnavailable: {exc}")
+                return session
+            trace.step(
+                "suggest_outfit",
+                inputs=f"item={session['selected_item']['title']!r}, wardrobe_items={len(session['wardrobe'].get('items') or [])}",
+                returned=session["outfit_suggestion"],
             )
 
         elif session["fit_card"] is None:
-            session["fit_card"] = create_fit_card(
-                session["outfit_suggestion"], session["selected_item"]
+            try:
+                session["fit_card"] = create_fit_card(
+                    session["outfit_suggestion"], session["selected_item"]
+                )
+            except ModelUnavailable as exc:
+                session["error"] = f"Couldn't write a fit card — the model couldn't be reached: {exc}"
+                trace.step("create_fit_card", note=f"ModelUnavailable: {exc}")
+                return session
+            trace.step(
+                "create_fit_card",
+                inputs=f"outfit_len={len(session['outfit_suggestion'])} chars",
+                returned=session["fit_card"],
             )
 
         else:
