@@ -35,18 +35,52 @@ SCENARIOS = [
         "wardrobe": "empty",
         "criterion": None,
     },
-    # TODO: add what your criteria 3, 4 and 5 need.
-    #
-    # Set "criterion" to the number in criteria.md that the scenario tests.
-    # "criterion": None means a diagnostic run — useful to have, but it isn't
-    # one of your five, and run_eval.py marks it as such in the table.
-    #
-    # For a state criterion, any normal query works — what you're checking is
-    # what ends up in the session, not what the user typed.
-    #
-    # For a fit-card criterion, you probably want the SAME query listed more
-    # than once, or several different items, depending on what your criterion
-    # actually says.
+    # Criterion 3 names 5 specific queries (app.py's EXAMPLE_QUERIES[:-1]) and
+    # checks, for each one, that the item search_listings found is the item
+    # that reached the fit card. Criterion 5 names its own 5 queries, checking
+    # price/size compliance instead — 4 of its 5 queries are the same strings
+    # as criterion 3's. Rather than duplicate scenarios for overlapping
+    # queries, each distinct query gets ONE scenario here; criteria 1, 3, 4,
+    # and 5 are all scored off whichever scenarios their own query list names
+    # (criterion 1's scenario above already covers 'vintage graphic tee under
+    # $30' for criteria 3, 4, and 5 too).
+    {
+        # Criterion 3 (also feeds criterion 5 — same query is in both lists).
+        "name": "session passing: track jacket",
+        "query": "90s track jacket in size M",
+        "wardrobe": "example",
+        "criterion": 3,
+    },
+    {
+        # Criterion 3 (also feeds criterion 5).
+        "name": "session passing: slip dress",
+        "query": "silk slip dress in midi length under $40",
+        "wardrobe": "example",
+        "criterion": 3,
+    },
+    {
+        # Criterion 3 only — criterion 5 asks for 'sneakers size US 9' instead.
+        "name": "session passing: sneakers size 8",
+        "query": "platform sneakers size 8",
+        "wardrobe": "example",
+        "criterion": 3,
+    },
+    {
+        # Criterion 3 (also feeds criterion 5). Example wardrobe, unlike the
+        # "empty wardrobe" diagnostic scenario above which uses this same
+        # query with no wardrobe items — different test, kept separate.
+        "name": "session passing: denim jacket",
+        "query": "denim jacket under $50",
+        "wardrobe": "example",
+        "criterion": 3,
+    },
+    {
+        # Criterion 5 only — the one query in its list not already covered.
+        "name": "price/size check: sneakers US 9",
+        "query": "sneakers size US 9",
+        "wardrobe": "example",
+        "criterion": 5,
+    },
 ]
 
 WARDROBES = ("example", "empty")
