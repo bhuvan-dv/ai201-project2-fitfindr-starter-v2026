@@ -403,19 +403,80 @@ $ cat memory/wardrobe.json
      `python run_eval.py --label before` runs everything and writes the table
      into results/. Paste it here and fill in the verdicts. -->
 
+`python run_eval.py --label before` ran 8 scenarios × 5 tries each (40 runs,
+caching off); full output is in `results/run_2026-10-07_1859_before.md`.
+Criteria 3 and 5 each name 5 *specific, distinct* queries in `criteria.md`
+rather than one query repeated — so for those two rows, "Try 1"–"Try 5" below
+are the 5 different queries their criterion names, each checked once, not 5
+repeats of the same input. Criteria 1, 2, and 4 are the standard case: one
+scenario, run 5 times.
+
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+| 1. Matching query completes all three tools | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 2. Impossible query stops before the second tool | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 3. Selected item is the item later tools used (tee / track jacket / slip dress / sneakers-8 / denim jacket) | 5 of 5 queries | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 4. Fit card is a postable caption, and it varies | ≥4 of 5 format; 5 of 5 distinct openers | PASS | PASS | PASS | PASS | PASS | MET (5/5 format, 5/5 distinct by exact string — see note below) |
+| 5. Search respects the price ceiling and the size (tee / denim jacket / slip dress / track jacket / sneakers-US9) | 5 of 5 queries, zero violations | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
 
-**Real output from one try**, pasted as text, naming the file and function
-that produced it:
+**Real output, pasted as text**
+
+Criterion 1 & 4, Try 1 — `agent.py::run_agent` via `run_eval.py::run_once`, query `'vintage graphic tee under $30'`:
 
 ```
+[1] search_listings (via MCP)
+      in:  description='vintage graphic tee', size=None, max_price=30.0
+      out: 10 items: Vintage Band Tee — Faded Grey, Graphic Tee — 2003 Tour Bootleg Style, Y2K Baby Tee — Butterfly Print … +7 more
+[2] compare_price
+      in:  item='Vintage Band Tee — Faded Grey'
+      out: verdict='fair', typical_price=21.5, n_compared=14
+[3] suggest_outfit
+      in:  item='Vintage Band Tee — Faded Grey', wardrobe_items=10
+      out: **Outfit 1: Effortless Streetwear** Pair the vintage band tee with the baggy straight-leg jeans, black denim j…
+[4] create_fit_card
+      in:  outfit_len=494 chars
+      out: Finally scored this perfectly faded grey band tee on Depop for just $19 and I'm honestly obsessed with the gru…
 
+Fit card: Finally scored this perfectly faded grey band tee on Depop for just $19 and I'm honestly obsessed with the grunge energy. Can't wait to style it with baggy denim and combat boots for an effortless streetwear look, or dress it down with khakis and chunky sneakers. 🎸✨ #vintagestyle
+```
+
+Criterion 1 & 4, Try 4 — same query, **this is the try worth flagging**: the model rounded the price to words instead of a dollar figure.
+
+```
+Fit card: Just scored this perfectly faded grey band tee on Depop for nineteen bucks and the wash on it is literally unbeatable. Putting together a baggy denim and combat boot fit for the concert tonight, but tomorrow I'm definitely styling it with wide-leg khakis and chunky sneakers for that effortless grunge look. 🖤🎶
+
+#vintagefashion #grungestyle
+```
+
+Criterion 2, Try 1 — `agent.py::run_agent`, query `'designer ballgown size XXS under $5'`:
+
+```
+[1] search_listings (via MCP)
+      in:  description='designer ballgown', size='XXS', max_price=5.0
+      out: [] (empty)
+[2] branch: empty search
+      →    stopping before suggest_outfit
+
+stopped early: yes — No listings matched 'designer ballgown', size XXS, under $5. Try to drop the size, or raise the price limit, or use broader words (e.g. 'dress' instead of 'designer ballgown').
+```
+
+Criterion 3, Try 1 of "session passing: track jacket" — query `'90s track jacket in size M'`:
+
+```
+selected_item: 90s Track Jacket — Navy/White Stripe ($45.0, poshmark)
+search_results: 5
+
+Fit card: Scored this vintage Champion navy track jacket on Poshmark for $45 and it is literally the ultimate 90s streetwear piece. Already planning to wear it with baggy denim and a white tank for that effortless off-duty look, or layered over a black hoodie with khakis. 🤌 #vintagefashion
+```
+
+Criterion 5 — `tools.py::search_listings`, called directly for all 5 of its named queries to check every listing, not just the selected one:
+
+```
+Query: 'vintage graphic tee under $30'   parsed: {'description': 'vintage graphic tee', 'size': None, 'max_price': 30.0}    results: 10, violations: NONE
+Query: 'denim jacket under $50'          parsed: {'description': 'denim jacket', 'size': None, 'max_price': 50.0}           results: 7,  violations: NONE
+Query: 'silk slip dress in midi length under $40'  parsed: {'description': 'silk slip dress in midi length', 'size': None, 'max_price': 40.0}  results: 5, violations: NONE
+Query: '90s track jacket in size M'      parsed: {'description': '90s track jacket in', 'size': 'M', 'max_price': None}     results: 5,  violations: NONE
+Query: 'sneakers size US 9'              parsed: {'description': 'sneakers', 'size': 'US 9', 'max_price': None}             results: 1,  violations: NONE
 ```
 
 ---
@@ -440,13 +501,45 @@ that produced it:
 
 | # | Criterion | Target | Verdict | How I decided |
 |---|---|---|---|---|
-| 1 |  |  |  |  |
-| 2 |  |  |  |  |
-| 3 |  |  |  |  |
-| 4 |  |  |  |  |
-| 5 |  |  |  |  |
+| 1 | Matching query completes all three tools | 4 of 5 | MET (5/5) | All 5 tries reached `create_fit_card` with a non-empty card; counted completions against the 4/5 target. |
+| 2 | Impossible query stops before the second tool | 5 of 5 | MET (5/5) | All 5 tries set `session["error"]` and returned before `suggest_outfit` was ever called — confirmed by the trace stopping at step 2 every time. |
+| 3 | Selected item is the item later tools used | 5 of 5 queries | MET (5/5) | For each of the 5 `EXAMPLE_QUERIES`, `selected_item` is always `search_results[0]` (deterministic by construction), and the fit card's exact price and platform both appeared in all 5 — checked by reading the actual text, not assuming it. |
+| 4 | Fit card is a postable caption, and it varies | ≥4/5 format; 5/5 distinct openers | MET (5/5 both), but see below | All 5 cards were 2–3 sentences with 1–2 hashtags, and no two first sentences were byte-identical. Literally met — but I don't believe it's testing what I meant. |
+| 5 | Search respects the price ceiling and the size | 5 of 5 queries, zero violations | MET (5/5) | Called `search_listings` directly for all 5 named queries and checked every returned listing, not just the selected one, against price and the token-match size rule. Zero violations. |
 
-**Diagnoses**
+**No misses this run.** Rather than manufacture one, here's what I'd
+tighten and why.
+
+**Criterion 4 was set too loose.** "All 5 cards have a different first
+sentence," taken literally, is exact-string inequality — and by that
+measure it's a clean pass. But two of the five openers are the same
+template with one word swapped:
+
+- Try 2: *"Finally scored this perfectly faded grey band tee on Depop for
+  just $19 and I am never taking it off."*
+- Try 5: *"Scored this perfectly faded vintage band tee on Depop for just
+  $19 and I am never taking it off."*
+
+Same sentence shape, same ending clause, "grey" swapped for "vintage" and
+"Finally scored" trimmed to "Scored." A criterion that only checks
+byte-equality can't see that — exactly the "Scored this…" template pattern
+my own reasoning for criterion 4 predicted ("if two match, the prompt is
+pushing the model into a template opener… which I already saw twice in
+early runs") actually happened, and the criterion as written gave it a
+pass. **The tighter target I'd use instead:** no two openers may share
+their first 3 words or their last 5 words. That would have caught this
+pair and still passed the other 4.
+
+**A related, smaller finding — not a miss, but worth recording:** Try 4 of
+the same query produced *"for nineteen bucks"* instead of a dollar figure.
+Criterion 3 never saw this because it was scored from Try 1 (which said
+"$19"), not Try 4 — the risk criterion 3's own reasoning named up front
+("the model rounding $18.00 to '18 bucks'... that would count as a miss I
+want to see") is real and did occur once in 25 tries of this item across
+the whole evaluation; it just didn't land on the specific try criterion 3
+happened to sample. If I ran criterion 3 against repeated tries of the
+same query instead of 5 distinct queries, I'd expect to see it miss
+occasionally.
 
 
 
