@@ -280,8 +280,15 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
         f"Item: {_describe_item(new_item)}\n"
         f"How it'll be styled: {outfit}\n\n"
         "Rules: 2 to 4 sentences. Sound like a real person posting, not a "
-        "product listing. Mention the item, the price and the platform once "
-        "each. Be specific about the vibe. At most two emoji and two hashtags. "
+        "product listing. Mention the item, the price as a dollar figure "
+        "(e.g. $19, never spelled out like \"nineteen bucks\") and the "
+        "platform once each. Be specific about the vibe. At most two emoji "
+        "and two hashtags. "
+        "Open with something other than a variant of \"Scored this\" or "
+        "\"Just scored\" — don't lead with the verb \"scored\" at all. Start "
+        "the first sentence a different way each time: a reaction, a "
+        "question, a scene-setting detail, whatever fits, but not the same "
+        "sentence shape you'd default to. "
         "Return only the caption."
     )
     response = generate(prompt).strip()

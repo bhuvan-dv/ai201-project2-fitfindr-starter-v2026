@@ -626,24 +626,40 @@ that reason.
 
      `python run_eval.py --label after` -->
 
-**What I changed:**
+**What I changed:** `tools.py::create_fit_card`'s prompt. Added an explicit
+instruction to state the price as a dollar figure rather than spelling it
+out ("$19", never "nineteen bucks"), and told the model not to open with a
+variant of "Scored this" / "Just scored" and to vary the opening sentence
+shape each time.
 
-**Which failure it was meant to fix:**
+**Which failure it was meant to fix:** the criterion-4 finding above — two
+of five openers in the before-run shared the "Scored this... on Depop for
+just $19 and I am never taking it off" template with only a synonym
+swapped, which an exact-string distinctness check can't catch. Secondarily,
+it also targets the "nineteen bucks" rounding seen on one try, which bears
+on criterion 3.
+
+**Spot-check before the full re-run:** `python app.py ask 'vintage graphic
+tee under $30'` with the new prompt produced *"My Depop cart finally
+checked out and I am never taking this faded grey band tee off. Found it
+for just $19 and the grunge vibe is literally unmatched. 🎸
+#vintage #streetwear"* — a genuinely different opening shape, and the price
+stayed as "$19" rather than being spelled out.
 
 ### Run Log — After
 
-| Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
-|---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+**Not completed.** `python run_eval.py --label after` was started (8
+scenarios × 5 tries, same as the before-run) but the session ended before
+it finished the full rate-limited pass, and it was stopped rather than left
+running unattended. The one-off spot-check above is consistent with the
+change doing what it was meant to, but it is not the same evidence as a
+full 5-try run and isn't being presented as one.
 
-**Did it help, and how do I know:**
-
-<!-- If it made things worse, say that. Honestly reported, that earns full
-     credit and is more interesting than one that worked. -->
+**Did it help, and how do I know:** Not yet measured. This is the
+outstanding piece of Milestone 5 — rerun `python run_eval.py --label after`
+in full, then fill in this table and compare against the before-run above
+using the tighter distinctness check (no shared first-3/last-5 words) named
+in the Verdicts and Diagnoses section, not just exact-string inequality.
 
 
 
@@ -651,9 +667,14 @@ that reason.
 
 ## What's Still Broken
 
-<!-- For each criterion still missed: what you'd do, and why you stopped where
-     you did. "I ran out of time" is fine if it's true. Pretending nothing is
-     left is not. -->
+No criterion was missed in the before-run (see Verdicts and Diagnoses). The
+one incomplete piece is **Milestone 5's after-run**: the prompt change to
+`create_fit_card` is made and spot-checked once, but the full `python
+run_eval.py --label after` (8 scenarios × 5 tries) wasn't run to completion
+— I ran out of session time and stopped it deliberately rather than leave
+it running unattended. Next step is exactly that command, then filling in
+the Run Log — After table and the "did it help" verdict above using real
+data instead of the single spot-check.
 
 
 
